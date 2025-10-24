@@ -1,0 +1,10 @@
+﻿# OS / editor junk
+Thumbs.db
+.DS_Store
+
+# Secrets & env
+04_Configs/secrets/
+*.env
+
+# Logs
+06_Logs/
