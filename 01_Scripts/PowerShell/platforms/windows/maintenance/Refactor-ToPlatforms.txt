@@ -1,0 +1,75 @@
+<#
+.SYNOPSIS
+  Move files from the legacy (pre-platform) script folders into the new platforms/ layout,
+  then remove the old folders if they become empty.
+
+.AUTHOR
+  Sean Wilkes  |  GitHub: SeanWilkes  |  Email: seanwilkes87@gmail.com
+#>
+
+param(
+  [string]$BasePath = "D:\Azure-Toolkit",
+  [switch]$WhatIf   # Preview-only mode if supplied
+)
+
+function Ensure-Dir {
+  param([string]$Path)
+  if (-not (Test-Path $Path)) { New-Item -ItemType Directory -Path $Path | Out-Null }
+}
+
+# Mapping: Legacy folder -> New platform folder
+$map = @(
+  @{ Src = "01_Scripts\PowerShell\compute";        Dst = "01_Scripts\PowerShell\platforms\windows\compute" },
+  @{ Src = "01_Scripts\PowerShell\identity";       Dst = "01_Scripts\PowerShell\platforms\windows\identity" },
+  @{ Src = "01_Scripts\PowerShell\networking";     Dst = "01_Scripts\PowerShell\platforms\windows\networking" },
+  @{ Src = "01_Scripts\PowerShell\maintenance";    Dst = "01_Scripts\PowerShell\platforms\windows\maintenance" },
+  @{ Src = "01_Scripts\PowerShell\resource-groups";Dst = "01_Scripts\PowerShell\platforms\azure\resource-groups" },
+
+  @{ Src = "01_Scripts\Bash\compute";              Dst = "01_Scripts\Bash\platforms\linux\compute" },
+  @{ Src = "01_Scripts\Bash\identity";             Dst = "01_Scripts\Bash\platforms\linux\identity" },
+  @{ Src = "01_Scripts\Bash\networking";           Dst = "01_Scripts\Bash\platforms\linux\networking" },
+  @{ Src = "01_Scripts\Bash\maintenance";          Dst = "01_Scripts\Bash\platforms\linux\maintenance" },
+  @{ Src = "01_Scripts\Bash\resource-groups";      Dst = "01_Scripts\Bash\platforms\azure\resource-groups" }
+)
+
+foreach ($entry in $map) {
+  $src = Join-Path $BasePath $entry.Src
+  $dst = Join-Path $BasePath $entry.Dst
+
+  if (-not (Test-Path $src)) {
+    Write-Host "Skip: source not found -> $src"
+    continue
+  }
+
+  Ensure-Dir -Path $dst
+
+  # Move all files while preserving subfolder structure
+  $files = Get-ChildItem -Path $src -Recurse -File -Force
+  foreach ($f in $files) {
+    $rel = $f.FullName.Substring($src.Length).TrimStart('\')
+    $targetFile = Join-Path $dst $rel
+    $targetDir = Split-Path $targetFile -Parent
+    Ensure-Dir -Path $targetDir
+
+    if ($WhatIf) {
+      Write-Host "[WhatIf] Move $($f.FullName) -> $targetFile"
+    } else {
+      Move-Item -Path $f.FullName -Destination $targetFile -Force
+    }
+  }
+
+  # Remove empty directories under the old tree
+  if (-not $WhatIf) {
+    Get-ChildItem -Path $src -Recurse -Directory -Force |
+      Sort-Object FullName -Descending |
+      ForEach-Object { if (-not (Get-ChildItem -Path $_.FullName -Force)) { Remove-Item -Path $_.FullName -Force } }
+
+    # If root folder is now empty, remove it too
+    if (-not (Get-ChildItem -Path $src -Force)) {
+      Remove-Item -Path $src -Force
+      Write-Host "Removed empty legacy folder: $src"
+    }
+  }
+}
+
+Write-Host "Refactor complete."
